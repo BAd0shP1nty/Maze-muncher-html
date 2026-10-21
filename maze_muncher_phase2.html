@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maze Muncher</title>
+<style>
+  :root { color-scheme: dark; --bg:#080b18; --panel:#11182c; --line:#25345f; --yellow:#ffe34d; --cyan:#58e7ff; --pink:#ff6aa9; }
+  * { box-sizing:border-box }
+  body { margin:0; min-height:100vh; background:radial-gradient(ellipse at top,#17234a 0,#080b18 58%); color:#f5f7ff; font:16px/1.45 "Segoe UI",system-ui,sans-serif; display:grid; place-items:center; padding:20px }
+  .shell { width:min(100%,900px); }
+  header { display:flex; justify-content:space-between; align-items:end; gap:16px; flex-wrap:wrap; margin-bottom:14px }
+  h1 { margin:0; font-size:clamp(1.7rem,4vw,2.7rem); letter-spacing:.08em; color:var(--yellow); text-shadow:0 0 18px #ffe34d55 }
+  .sub { color:#aebbe4; margin:4px 0 0 }
+  .hud { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px }
+  .stat { flex:1; min-width:100px; background:#11182cdd; border:1px solid var(--line); border-radius:12px; padding:10px 14px }
+  .stat span { display:block; font-size:.72rem; color:#9aabd9; text-transform:uppercase; letter-spacing:.12em }
+  .stat strong { font-size:1.25rem; font-variant-numeric:tabular-nums }
+  .game-frame { position:relative; background:#02040c; border:2px solid #304a94; border-radius:16px; padding:10px; box-shadow:0 20px 70px #0009,0 0 28px #315be433 }
+  canvas { display:block; width:100%; height:auto; image-rendering:pixelated; border-radius:8px; outline:none }
+  .overlay { position:absolute; inset:10px; display:grid; place-items:center; background:#050817cc; backdrop-filter:blur(4px); border-radius:8px; text-align:center; padding:24px }
+  .overlay.hidden { display:none }
+  .overlay-card { max-width:430px }
+  .overlay h2 { margin:0 0 8px; font-size:clamp(1.6rem,5vw,2.6rem); color:var(--yellow) }
+  .overlay p { color:#c5cdef; margin:8px 0 18px }
+  button { cursor:pointer; border:1px solid #7c8fdf; color:#080d20; background:var(--yellow); padding:11px 20px; border-radius:999px; font-weight:800; font-size:1rem }
+  button:hover { filter:brightness(1.08); transform:translateY(-1px) }
+  .secondary { color:#e9eeff; background:#182342; border-color:#42578e }
+  .statusline { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0 2px 10px; color:#9fb0df; font-size:.82rem }
+  .statusline strong { color:#ffe34d; font-weight:700 }
+  .controls { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:14px; color:#aebbe4; font-size:.9rem }
+  .keys { display:flex; gap:6px; align-items:center; flex-wrap:wrap }
+  kbd { display:inline-block; min-width:28px; text-align:center; padding:3px 7px; border-radius:6px; background:#151e38; border:1px solid #3b4d7c; color:#fff; box-shadow:0 2px #26365c }
+  .buttons { display:flex; gap:8px; flex-wrap:wrap }
+  .touch { display:none; margin:16px auto 0; width:180px; grid-template-columns:repeat(3,1fr); gap:7px }
+  .touch button { padding:12px 0; border-radius:12px; background:#172342; color:#fff; border-color:#354a80 }
+  .touch button:nth-child(1) { grid-column:2 }
+  .touch button:nth-child(2) { grid-column:1; grid-row:2 }
+  .touch button:nth-child(3) { grid-column:2; grid-row:2 }
+  .touch button:nth-child(4) { grid-column:3; grid-row:2 }
+  @media (pointer:coarse) { .touch { display:grid } }
+  footer { margin-top:12px; color:#7f90c2; font-size:.8rem; text-align:center }
+</style>
+</head>
+<body>
+<main class="shell">
+  <header>
+    <div><h1>MAZE MUNCHER</h1><p class="sub">A classic-inspired arcade maze chase • Phase 2</p></div>
+    <div class="buttons"><button class="secondary" id="soundBtn" aria-pressed="true">Sound: On</button><button class="secondary" id="pauseBtn">Pause</button><button class="secondary" id="restartBtn">Restart</button></div>
+  </header>
+  <section class="hud" aria-label="Game status">
+    <div class="stat"><span>Score</span><strong id="score">0</strong></div>
+    <div class="stat"><span>High score</span><strong id="high">0</strong></div>
+    <div class="stat"><span>Lives</span><strong id="lives">3</strong></div>
+    <div class="stat"><span>Level</span><strong id="level">1</strong></div>
+  </section>
+  <div class="statusline"><span>Ghost mode: <strong id="modeLabel">CHASE</strong></span><span id="bonusLabel">Bonus fruit appears as you score</span></div>\n  <div class="game-frame">
+    <canvas id="game" width="560" height="620" tabindex="0" aria-label="Maze Muncher game area"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="overlay-card">
+        <h2 id="overlayTitle">READY?</h2>
+        <p id="overlayText">Eat every dot, grab power orbs, collect bonus fruit, and outsmart the ghosts. Clear the maze to advance.</p>
+        <button id="mainBtn">Start game</button>
+      </div>
+    </div>
+  </div>
+  <div class="touch" aria-label="Touch controls">
+    <button data-dir="up" aria-label="Move up">▲</button><button data-dir="left" aria-label="Move left">◀</button><button data-dir="down" aria-label="Move down">▼</button><button data-dir="right" aria-label="Move right">▶</button>
+  </div>
+  <div class="controls">
+    <div class="keys"><span>Move</span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd><span>or</span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div>
+    <div class="keys"><kbd>Space</kbd><span>Pause</span><kbd>Enter</kbd><span>Start</span></div>
+  </div>
+  <footer>Single-file HTML game • Works offline in a modern Windows browser • Original placeholder art and maze layout</footer>
+</main>
+<script>
+(() => {
+  "use strict";
+  const canvas = document.getElementById("game"), ctx = canvas.getContext("2d");
+  const scoreEl = document.getElementById("score"), highEl = document.getElementById("high"),
+        livesEl = document.getElementById("lives"), levelEl = document.getElementById("level");
+  const overlay = document.getElementById("overlay"), overlayTitle = document.getElementById("overlayTitle"),
+        overlayText = document.getElementById("overlayText"), mainBtn = document.getElementById("mainBtn");
+  const pauseBtn = document.getElementById("pauseBtn"), restartBtn = document.getElementById("restartBtn");
+  const TILE = 20, COLS = 28, ROWS = 31, W = COLS*TILE, H = ROWS*TILE;
+  canvas.width = W; canvas.height = H;
+  // # = wall, . = dot, o = power orb, space = empty corridor
+  const rawMaze = [
+"############################",
+"#............##............#",
+"#.####.#####.##.#####.####..#",
+"#o####.#####.##.#####.####o.#",
+"#.####.#####.##.#####.####..#",
+"#...........................#",
+"#.####.##.########.##.####..#",
+"#.####.##.########.##.####..#",
+"#......##....##....##.......#",
+"######.##### ## #####.########",
+"     #.##### ## #####.#       ",
+"     #.##          ##.#       ",
+"     #.## ###--### ##.#       ",
+"######.## #      # ##.########",
+"      .   #      #   .        ",
+"######.## #      # ##.########",
+"     #.## ######## ##.#       ",
+"     #.##          ##.#       ",
+"     #.## ######## ##.#       ",
+"######.## ######## ##.########",
+"#............##............#",
+"#.####.#####.##.#####.####..#",
+"#o..##................##..o.#",
+"###.##.##.########.##.##.###.#",
+"#......##....##....##.......#",
+"#.##########.##.##########..#",
+"#...........................#",
+"#.####.#####.##.#####.####..#",
+"#o...#................#...o.#",
+"###.##.##.########.##.##.###.#",
+"############################"
+  ];
+  // Normalize the deliberately compact layout to the exact board width.
+  const maze = rawMaze.map(row => (row + "#".repeat(COLS)).slice(0,COLS).split("").map(ch => ch === "-" ? " " : ch));
+  const originalMaze = maze.map(row => row.slice());
+  const dirs = {up:{x:0,y:-1},down:{x:0,y:1},left:{x:-1,y:0},right:{x:1,y:0}};
+  let player, ghosts, score=0, lives=3, level=1, power=0, running=false, paused=false, gameOver=false, lastTime=0, elapsed=0;
+  let ghostMode="scatter", ghostModeTime=0, fruit=null, fruitMilestones=[], soundEnabled=true, audioCtx=null, deathFlash=0;
+  const modeLabel=document.getElementById("modeLabel"), bonusLabel=document.getElementById("bonusLabel"), soundBtn=document.getElementById("soundBtn");
+  let high = 0; try { high = Number(localStorage.getItem("mazeMuncherHigh") || 0); } catch {}
+  highEl.textContent = high;
+  const center = (x,y) => ({x:x*TILE+TILE/2,y:y*TILE+TILE/2});
+  const tileAt = (x,y) => ({c:Math.floor(x/TILE),r:Math.floor(y/TILE)});
+  function isWall(c,r) { return r<0 || r>=ROWS || c<0 || c>=COLS || maze[r][c]==="#"; }
+  function canMove(x,y,dir,rad=7) {
+    const nx=x+dir.x*4, ny=y+dir.y*4;
+    return !isWall(Math.floor((nx-rad)/TILE),Math.floor((ny-rad)/TILE)) &&
+           !isWall(Math.floor((nx+rad)/TILE),Math.floor((ny+rad)/TILE)) &&
+           !isWall(Math.floor((nx-rad)/TILE),Math.floor((ny+rad)/TILE)) &&
+           !isWall(Math.floor((nx+rad)/TILE),Math.floor((ny-rad)/TILE));
+  }
+  function resetActors() {
+    player = {...center(13,22), dir:{x:0,y:0}, next:{x:0,y:0}, speed:104, mouth:0};
+    ghosts = [
+      { ...center(13,14), color:"#ff5579", dir:dirs.left, speed:76, home:center(13,14), mode:0 },
+      { ...center(12,14), color:"#58e7ff", dir:dirs.right, speed:70, home:center(12,14), mode:1 },
+      { ...center(14,14), color:"#ff9c55", dir:dirs.up, speed:72, home:center(14,14), mode:2 },
+      { ...center(15,14), color:"#c58aff", dir:dirs.down, speed:68, home:center(15,14), mode:3 }
+    ];
+    power=0;
+  }
+  function resetMaze() {
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) maze[r][c]=originalMaze[r][c];
+    // Ensure actor starting tiles and the ghost house are walkable.
+    for(const [c,r] of [[13,22],[13,14],[12,14],[14,14],[15,14]]) maze[r][c]=" ";
+    resetActors();
+  }
+  function playTone(freq=440, duration=0.07, type="square", volume=0.035) {
+    if(!soundEnabled) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if(audioCtx.state==="suspended") audioCtx.resume();
+      const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+      osc.type=type; osc.frequency.setValueAtTime(freq,audioCtx.currentTime);
+      gain.gain.setValueAtTime(volume,audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+duration);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime+duration);
+    } catch {}
+  }
+  function sfx(name) {
+    if(name==="dot") playTone(520,0.035,"square",0.012);
+    else if(name==="power") { playTone(330,0.12,"triangle",0.05); setTimeout(()=>playTone(660,0.16,"triangle",0.04),80); }
+    else if(name==="fruit") { playTone(660,0.09,"square"); setTimeout(()=>playTone(880,0.12,"square"),90); setTimeout(()=>playTone(1100,0.16,"square"),180); }
+    else if(name==="ghost") { playTone(180,0.18,"triangle",0.06); setTimeout(()=>playTone(420,0.12,"triangle",0.04),100); }
+    else if(name==="hurt") { playTone(190,0.28,"sawtooth",0.045); }
+    else if(name==="level") { [440,554,659,880].forEach((f,i)=>setTimeout(()=>playTone(f,0.12,"triangle",0.04),i*110)); }
+  }
+  soundBtn.addEventListener("click",()=>{
+    soundEnabled=!soundEnabled;
+    soundBtn.textContent=`Sound: ${soundEnabled?"On":"Off"}`;
+    soundBtn.setAttribute("aria-pressed",String(soundEnabled));
+    if(soundEnabled) sfx("level");
+  });
+  function countCollectibles() {
+    let n=0;
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(maze[r][c]==="."||maze[r][c]==="o") n++;
+    return n;
+  }
+  function maybeSpawnFruit() {
+    // Two bonus-fruit opportunities per level, triggered by score milestones.
+    const thresholds=[500,1500];
+    for(const threshold of thresholds) {
+      if(score>=threshold && !fruitMilestones.includes(threshold) && !fruit) {
+        fruit={...center(13,20), value:level*100, time:9};
+        fruitMilestones.push(threshold);
+        bonusLabel.textContent=`Bonus fruit active: ${fruit.value} points`;
+        return;
+      }
+    }
+  }
+  function updateHud() {
+    scoreEl.textContent=score; livesEl.textContent=lives; levelEl.textContent=level;
+    if(score>high){ high=score; highEl.textContent=high; try{localStorage.setItem("mazeMuncherHigh",String(high));}catch{} }
+  }
+  function showOverlay(title, text, buttonText) {
+    overlayTitle.textContent=title; overlayText.textContent=text; mainBtn.textContent=buttonText; overlay.classList.remove("hidden");
+  }
+  function hideOverlay(){ overlay.classList.add("hidden"); }
+  function startGame() {
+    if(gameOver){ score=0; lives=3; level=1; resetMaze(); updateHud(); gameOver=false; }
+    running=true; paused=false; hideOverlay(); lastTime=performance.now(); canvas.focus(); if(audioCtx && audioCtx.state==="suspended") audioCtx.resume();
+  }
+  function pauseGame() {
+    if(!running || gameOver) return;
+    paused=!paused;
+    if(paused) showOverlay("PAUSED","Take a breather. Your maze is waiting.","Resume");
+    else { hideOverlay(); lastTime=performance.now(); }
+    pauseBtn.textContent=paused?"Resume":"Pause";
+  }
+  function restartGame() {
+    score=0;lives=3;level=1;gameOver=false;running=false;paused=false;resetMaze();updateHud();
+    pauseBtn.textContent="Pause";showOverlay("READY?","Eat every dot, grab power orbs, collect bonus fruit, and outsmart the ghosts. Clear the maze to advance.","Start game");draw();
+  }
+  function setDirection(name) { if(player && dirs[name]) player.next=dirs[name]; }
+  document.addEventListener("keydown", e => {
+    const key=e.key.toLowerCase(), map={arrowup:"up",w:"up",arrowdown:"down",s:"down",arrowleft:"left",a:"left",arrowright:"right",d:"right"};
+    if(map[key]) { e.preventDefault(); setDirection(map[key]); if(!running && !gameOver) startGame(); }
+    if(key===" "){e.preventDefault();pauseGame();}
+    if(key==="enter" && (!running || paused || gameOver)) { if(paused){paused=false;hideOverlay();running=true;lastTime=performance.now();pauseBtn.textContent="Pause";} else startGame(); }
+  });
+  document.querySelectorAll("[data-dir]").forEach(b=>b.addEventListener("click",()=>{setDirection(b.dataset.dir);if(!running&&!gameOver)startGame();}));
+  mainBtn.addEventListener("click",()=>{ if(paused){paused=false;hideOverlay();lastTime=performance.now();pauseBtn.textContent="Pause";}else startGame(); });
+  pauseBtn.addEventListener("click",pauseGame); restartBtn.addEventListener("click",restartGame);
+  // Snap only across the direction of travel. Snapping the moving coordinate
+  // every frame repeatedly pulled actors back to their last tile center.
+  function snapToGrid(a) {
+    const tx=Math.round((a.x-TILE/2)/TILE)*TILE+TILE/2;
+    const ty=Math.round((a.y-TILE/2)/TILE)*TILE+TILE/2;
+    if (a.dir && a.dir.x !== 0) {
+      if (Math.abs(a.y-ty)<4) a.y=ty;
+    } else if (a.dir && a.dir.y !== 0) {
+      if (Math.abs(a.x-tx)<4) a.x=tx;
+    } else {
+      if (Math.abs(a.x-tx)<3) a.x=tx;
+      if (Math.abs(a.y-ty)<3) a.y=ty;
+    }
+  }
+  function atCenter(a) {
+    const tx=Math.round((a.x-TILE/2)/TILE)*TILE+TILE/2;
+    const ty=Math.round((a.y-TILE/2)/TILE)*TILE+TILE/2;
+    return Math.abs(a.x-tx)<2.5 && Math.abs(a.y-ty)<2.5;
+  }
+  function alignToCenter(a) {
+    a.x=Math.round((a.x-TILE/2)/TILE)*TILE+TILE/2;
+    a.y=Math.round((a.y-TILE/2)/TILE)*TILE+TILE/2;
+  }
+  function movePlayer(dt) {
+    const p=player; snapToGrid(p);
+    if(atCenter(p) && canMove(p.x,p.y,p.next)) p.dir=p.next;
+    if(!canMove(p.x,p.y,p.dir)) p.dir={x:0,y:0};
+    p.x+=p.dir.x*p.speed*dt; p.y+=p.dir.y*p.speed*dt;
+    // Horizontal tunnel wrap.
+    if(p.x < -TILE/2) p.x=W+TILE/2; if(p.x>W+TILE/2) p.x=-TILE/2;
+    p.mouth+=dt*12;
+    const {c,r}=tileAt(p.x,p.y);
+    if(r>=0&&r<ROWS&&c>=0&&c<COLS){
+      if(maze[r][c]==="."){maze[r][c]=" ";score+=10;sfx("dot");}
+      if(maze[r][c]==="o"){maze[r][c]=" ";score+=50;power=7;sfx("power");}
+      if(fruit && Math.hypot(player.x-fruit.x,player.y-fruit.y)<TILE*.72) {
+        score+=fruit.value; fruit=null; sfx("fruit"); bonusLabel.textContent="Fruit collected! Bonus points awarded";
+      }
+    }
+  }
+  function moveGhost(g,dt) {
+    snapToGrid(g);
+    if(atCenter(g)) {
+      alignToCenter(g);
+      const options=Object.values(dirs).filter(d=>canMove(g.x,g.y,d));
+      const reverse={x:-g.dir.x,y:-g.dir.y};
+      let choices=options.filter(d=>d.x!==reverse.x||d.y!==reverse.y);
+      if(!choices.length) choices=options;
+      if(choices.length) {
+        if(power>0) {
+          // Frightened ghosts make less predictable turns while the power-up lasts.
+          g.dir=choices[Math.floor(Math.random()*choices.length)];
+        } else {
+          // Distinct chase personalities: direct pursuit, ambush, far-corner patrol,
+          // and a looser chaser. Every decision is made at a tile center.
+          const scatterTargets=[center(26,1),center(1,1),center(26,29),center(1,29)];
+          const chaseTarget = g.mode===0 ? player
+            : g.mode===1 ? {x:player.x+player.dir.x*60,y:player.y+player.dir.y*60}
+            : g.mode===2 ? center(26,1)
+            : {x:player.x+(player.x-g.x)*0.25,y:player.y+(player.y-g.y)*0.25};
+          const target = ghostMode==="scatter" ? scatterTargets[g.mode] : chaseTarget;
+          choices.sort((a,b)=>{
+            const da=Math.hypot(g.x+a.x*TILE-target.x,g.y+a.y*TILE-target.y);
+            const db=Math.hypot(g.x+b.x*TILE-target.x,g.y+b.y*TILE-target.y);
+            return da-db+(Math.random()-.5)*8;
+          });
+          g.dir=choices[0];
+        }
+      } else {
+        g.dir={x:0,y:0};
+      }
+    }
+    const speed=power>0?g.speed*.68:g.speed+(level-1)*3;
+    if(!canMove(g.x,g.y,g.dir)) {
+      // If the current corridor ends, immediately pick a legal exit.
+      const exits=Object.values(dirs).filter(d=>canMove(g.x,g.y,d));
+      g.dir=exits[0]||{x:0,y:0};
+    }
+    g.x+=g.dir.x*speed*dt;
+    g.y+=g.dir.y*speed*dt;
+    if(g.x < -TILE/2)g.x=W+TILE/2;
+    if(g.x>W+TILE/2)g.x=-TILE/2;
+  }
+  function loseLife() {
+    lives--; updateHud();
+    if(lives<=0){running=false;gameOver=true;showOverlay("GAME OVER",`Final score: ${score}. Ready for another run?`,"Play again");}
+    else {resetActors();running=false;showOverlay("CAUGHT!","You lost a life. The dots are still yours. Ready to try again?","Continue");}
+  }
+  function update(dt) {
+    if(!running||paused||gameOver)return;
+    elapsed+=dt; power=Math.max(0,power-dt); deathFlash=Math.max(0,deathFlash-dt);
+    // Arcade-style rhythm: ghosts alternate between a short scatter phase and pursuit.
+    if(power<=0) {
+      ghostModeTime+=dt;
+      const duration=ghostMode==="scatter" ? Math.max(3.5,6-level*0.3) : Math.max(7,18-level*0.7);
+      if(ghostModeTime>=duration) {
+        ghostMode=ghostMode==="scatter"?"chase":"scatter"; ghostModeTime=0;
+        ghosts.forEach(g=>{g.dir={x:-g.dir.x,y:-g.dir.y};});
+      }
+    }
+    modeLabel.textContent=power>0?"FRIGHTENED":ghostMode.toUpperCase();
+    movePlayer(dt);
+    ghosts.forEach(g=>moveGhost(g,dt));
+    maybeSpawnFruit();
+    if(fruit) {
+      fruit.time-=dt;
+      if(fruit.time<=0) {fruit=null;bonusLabel.textContent="Bonus fruit appears as you score";}
+    }
+    for(const g of ghosts){
+      if(Math.hypot(player.x-g.x,player.y-g.y)<TILE*.72){
+        if(power>0){score+=200;sfx("ghost");g.x=g.home.x;g.y=g.home.y;g.dir=dirs.up;}
+        else {loseLife();return;}
+      }
+    }
+    if(countCollectibles()===0){
+      level++;sfx("level");resetMaze();running=false;
+      showOverlay("MAZE CLEARED!",`Level ${level} is ready. Ghosts move faster and the chase gets tougher.`,"Next level");
+    }
+    updateHud();
+  }
+  function drawWall(c,r) {
+    const x=c*TILE,y=r*TILE;
+    ctx.fillStyle="#07102b";ctx.fillRect(x,y,TILE,TILE);
+    ctx.strokeStyle="#2c65d8";ctx.lineWidth=1.5;ctx.strokeRect(x+1.5,y+1.5,TILE-3,TILE-3);
+    ctx.fillStyle="#0b1a42";ctx.fillRect(x+4,y+4,TILE-8,TILE-8);
+  }
+  function drawPlayer() {
+    const p=player, angle=Math.atan2(p.dir.y,p.dir.x), mouth=(Math.sin(p.mouth)+1)*.17;
+    ctx.fillStyle="#ffe34d";ctx.beginPath();
+    if(p.dir.x===0&&p.dir.y===0){ctx.arc(p.x,p.y,8.5,0,Math.PI*2);}
+    else {ctx.moveTo(p.x,p.y);ctx.arc(p.x,p.y,9,angle+mouth,angle+Math.PI*2-mouth);ctx.closePath();}
+    ctx.fill();
+    ctx.fillStyle="#172044";ctx.beginPath();ctx.arc(p.x+2,p.y-4,1.4,0,Math.PI*2);ctx.fill();
+  }
+  function drawGhost(g) {
+    const x=g.x,y=g.y, scared=power>0;
+    ctx.fillStyle=scared?"#3156d8":g.color;ctx.beginPath();
+    ctx.arc(x,y-1,8.5,Math.PI,0);ctx.lineTo(x+8.5,y+7);
+    ctx.lineTo(x+4,y+4);ctx.lineTo(x,y+7);ctx.lineTo(x-4,y+4);ctx.lineTo(x-8.5,y+7);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#fff";ctx.beginPath();ctx.ellipse(x-3,y-1,2.8,3.5,0,0,Math.PI*2);ctx.ellipse(x+3,y-1,2.8,3.5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#14204b";ctx.beginPath();ctx.arc(x-2.5,y,1.3,0,Math.PI*2);ctx.arc(x+3.5,y,1.3,0,Math.PI*2);ctx.fill();
+  }
+  function draw() {
+    ctx.fillStyle="#02040c";ctx.fillRect(0,0,W,H);
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+      const ch=maze[r][c];if(ch==="#")drawWall(c,r);
+      else if(ch==="."){ctx.fillStyle="#ffe8b4";ctx.beginPath();ctx.arc(c*TILE+10,r*TILE+10,2,0,Math.PI*2);ctx.fill();}
+      else if(ch==="o"){ctx.fillStyle="#fff0a1";ctx.shadowColor="#ffe34d";ctx.shadowBlur=10;ctx.beginPath();ctx.arc(c*TILE+10,r*TILE+10,5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+    }
+    // Ghost-house door
+    ctx.strokeStyle="#ff8fbd";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(12*TILE,14*TILE);ctx.lineTo(16*TILE,14*TILE);ctx.stroke();
+    drawPlayer();ghosts.forEach(drawGhost);
+    if(fruit) {
+      ctx.save(); ctx.translate(fruit.x,fruit.y);
+      ctx.fillStyle="#ff4f78"; ctx.beginPath(); ctx.arc(0,2,6,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#63ed9a"; ctx.beginPath(); ctx.ellipse(3,-5,4,2,0.6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="#63ed9a";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,-1);ctx.lineTo(1,-6);ctx.stroke();
+      ctx.restore();
+    }
+    if(power>0){ctx.fillStyle="#ffe34d";ctx.font="bold 12px Segoe UI";ctx.fillText("POWER",8,14);}
+    if(deathFlash>0){ctx.fillStyle=`rgba(255,70,100,${deathFlash*0.45})`;ctx.fillRect(0,0,W,H);}
+  }
+  function loop(now) {
+    const dt=Math.min((now-lastTime)/1000||0,.04);lastTime=now;
+    update(dt);draw();requestAnimationFrame(loop);
+  }
+  resetMaze();updateHud();draw();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
